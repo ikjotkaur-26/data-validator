@@ -1,125 +1,60 @@
-<<<<<<< HEAD
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request
 import pandas as pd
 import os
 
 app = Flask(__name__)
 
 UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-import os
-
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-if not os.path.exists(OUTPUT_FOLDER):
-    os.makedirs(OUTPUT_FOLDER)
-# HOME PAGE
-@app.route('/')
-def home():
-    return render_template("index.html")
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
-# UPLOAD + VALIDATION
-@app.route('/upload', methods=['POST'])
-def upload_file():
+def validate_csv(file_path):
+    df = pd.read_csv(file_path)
 
-    file = request.files['file']
-    country = request.form['country']
+    errors = []
 
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    # Missing values
+    if df.isnull().sum().sum() > 0:
+        errors.append("Missing values found in file")
 
-    df = pd.read_csv(filepath, encoding='ISO-8859-1')
+    # Duplicate rows
+    if df.duplicated().sum() > 0:
+        errors.append("Duplicate rows detected")
 
-    # STEP 1: Remove empty rows
-    df = df.dropna()
+    # Email validation
+    if "email" in df.columns:
+        invalid_email = df[~df["email"].astype(str).str.contains("@", na=False)]
+        if len(invalid_email) > 0:
+            errors.append("Invalid email format found")
 
-    # STEP 2: Phone validation
-    if country == "india":
-        df = df[df['phone'].astype(str).str.len() == 10]
+    # Numeric check
+    if "age" in df.columns:
+        if not pd.api.types.is_numeric_dtype(df["age"]):
+            errors.append("Age column must be numeric")
 
-    elif country == "singapore":
-        df = df[df['phone'].astype(str).str.len() == 8]
+    return errors
 
-    # STEP 3: Date validation
-    df = df[df['date'].notna()]
 
-    # STEP 4: Save cleaned file
-    clean_path = os.path.join(OUTPUT_FOLDER, "cleaned.csv")
-    df.to_csv(clean_path, index=False)
+@app.route("/", methods=["GET", "POST"])
+def index():
+    errors = []
+    table = None
 
-    # STEP 5: File splitting (chunks)
-    chunk_size = 3  # demo size
-    for i in range(0, len(df), chunk_size):
-        chunk = df.iloc[i:i+chunk_size]
-        chunk.to_csv(f"{OUTPUT_FOLDER}/chunk_{i}.csv", index=False)
+    if request.method == "POST":
+        file = request.files["file"]
 
-    return send_file(clean_path, as_attachment=True)
+        if file:
+            path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
+            file.save(path)
+
+            errors = validate_csv(path)
+
+            df = pd.read_csv(path)
+            table = df.head().to_html(classes="table table-striped")
+
+    return render_template("index.html", errors=errors, table=table)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
-=======
-from flask import Flask, render_template, request, send_file
-import pandas as pd
-import os
-
-app = Flask(__name__)
-
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-import os
-
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-if not os.path.exists(OUTPUT_FOLDER):
-    os.makedirs(OUTPUT_FOLDER)
-# HOME PAGE
-@app.route('/')
-def home():
-    return render_template("index.html")
-
-
-# UPLOAD + VALIDATION
-@app.route('/upload', methods=['POST'])
-def upload_file():
-
-    file = request.files['file']
-    country = request.form['country']
-
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
-
-    df = pd.read_csv(filepath, encoding='ISO-8859-1')
-
-    # STEP 1: Remove empty rows
-    df = df.dropna()
-
-    # STEP 2: Phone validation
-    if country == "india":
-        df = df[df['phone'].astype(str).str.len() == 10]
-
-    elif country == "singapore":
-        df = df[df['phone'].astype(str).str.len() == 8]
-
-    # STEP 3: Date validation
-    df = df[df['date'].notna()]
-
-    # STEP 4: Save cleaned file
-    clean_path = os.path.join(OUTPUT_FOLDER, "cleaned.csv")
-    df.to_csv(clean_path, index=False)
-
-    # STEP 5: File splitting (chunks)
-    chunk_size = 3  # demo size
-    for i in range(0, len(df), chunk_size):
-        chunk = df.iloc[i:i+chunk_size]
-        chunk.to_csv(f"{OUTPUT_FOLDER}/chunk_{i}.csv", index=False)
-
-    return send_file(clean_path, as_attachment=True)
-
-
-if __name__ == "__main__":
+    os.makedirs("uploads", exist_ok=True)
     app.run(debug=True)
->>>>>>> acbe8f9626f4178356c0941abc124fb0a14d3f11
